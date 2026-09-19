@@ -1,8 +1,7 @@
 import sqlite3
 import os
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
-
+from fastapi.responses import FileResponse, JSONResponse
 from report_data import get_report_data
 from render_report import build_html, render_pdf
 
@@ -32,13 +31,24 @@ def health():
 
 
 @app.post("/reports", status_code=201)
-def create_report():
-    data = get_report_data()
-    html = build_html(data)
-
+def create_report(force: bool = False):
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
+
+    if not force:
+        existing = cur.execute(
+            "SELECT id, path FROM reports WHERE date(created_at) = date('now') ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        if existing is not None:
+            conn.close()
+            return JSONResponse(
+                status_code=200,
+                content={"id": existing["id"], "file": f"/reports/{existing['id']}/file"}
+            )
+
+    data = get_report_data()
+    html = build_html(data)
 
     # Insert a placeholder row first to get an id
     cur.execute(
